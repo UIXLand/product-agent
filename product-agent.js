@@ -121,6 +121,7 @@ ${p.out_of_scope?.map(o => `• ${o}`).join('\n') ?? '—'}
 
 async function checkForEdits(taskId) {
   const task = await getTask(taskId)
+
   const comments = await getComments(taskId)
   if (!task.description?.includes('ПАСПОРТ ФИЧИ')) return
 
@@ -181,9 +182,73 @@ app.post('/passport', async (req, res) => {
 
 app.post('/webhook', async (req, res) => {
   res.sendStatus(200)
-  const { event, task_id } = req.body
-  if (event === 'taskCommentPosted') checkForEdits(task_id).catch(console.error)
+
+  const body = { ...req.body, ...req.query }
+  console.log('📥 Webhook получен:', JSON.stringify(body).slice(0, 200))
+
+  // Формат 1 — стандартный ClickUp API webhook (event + task_id)
+  if (body.event === 'taskCommentPosted') {
+    checkForEdits(body.task_id).catch(console.error)
+    return
+  }
+
+  if (body.event === 'taskCreated' || body.event === 'taskTagUpdated' || body.event === 'taskUpdated') {
+    const taskId = body.task_id || body.id
+    if (taskId) processBriefTask(taskId).catch(console.error)
+    return
+  }
+
+  // Формат 2 — ClickUp Automation webhook (отправляет task_id напрямую)
+  const taskId = body.task_id || body.id || body.taskId
+  if (taskId) {
+    console.log('📥 Automation webhook, task_id:', taskId)
+    // Проверяем комментарии и тег brief
+    checkForEdits(taskId).catch(console.error)
+    processBriefTask(taskId).catch(console.error)
+  }
 })
+
+// Обработка задачи с тегом brief
+async function processBriefTask(taskId) {
+  try {
+    const task = await getTask(taskId)
+
+    // Проверяем тег brief
+    const hasBriefTag = task.tags?.some(t =>
+      t.name?.toLowerCase() === 'brief'
+    )
+    if (!hasBriefTag) return
+
+    // Проверяем не обрабатывали ли уже
+    const comments = await getComments(taskId)
+    const alreadyProcessed = comments.find(c =>
+      c.comment_text?.includes('Product Agent')
+    )
+    if (alreadyProcessed) return
+
+    // Берём описание задачи как бриф
+    const brief = task.description
+    if (!brief || brief.trim().length < 10) {
+      await addComment(taskId, '⚠️ Product Agent: описание задачи слишком короткое для создания паспорта. Добавьте подробное описание фичи.')
+      return
+    }
+
+    console.log(`\n📋 Обрабатываем бриф из задачи: ${task.name}`)
+    await addComment(taskId, '🤖 Product Agent: получил бриф, создаю паспорт фичи...')
+
+    const passport = await callClaude(CREATE_PROMPT, `Название фичи: ${task.name}\n\nОписание:\n${brief}`)
+    const desc = buildDesc(passport)
+    const passportTask = await createTask(`[PASSPORT] ${passport.feature_name}`, desc)
+
+    await addComment(taskId,
+      `✅ Паспорт фичи создан!\n\nЗадача: ${passportTask.url}\n\n──────────\nОткройте задачу, проверьте паспорт и напишите "approved" чтобы BA-агент начал проработку PRD.`
+    )
+    console.log(`✅ Паспорт создан из брифа: ${passportTask.url}`)
+
+  } catch (e) {
+    console.error('❌ Ошибка обработки брифа:', e.message)
+  }
+}
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
 cron.schedule('*/3 * * * *', () => poll().catch(console.error))
