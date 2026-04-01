@@ -18,7 +18,7 @@ const clickup = axios.create({
 })
 
 const LIST_ID = process.env.CLICKUP_LIST_ID
-const PORT = process.env.PRODUCT_AGENT_PORT || 3001
+const PORT = process.env.PORT || process.env.PRODUCT_AGENT_PORT || 3001
 
 // ─────────────────────────────────────────
 // СИСТЕМНЫЙ ПРОМПТ
