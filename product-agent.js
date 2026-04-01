@@ -183,29 +183,23 @@ app.post('/passport', async (req, res) => {
 app.post('/webhook', async (req, res) => {
   res.sendStatus(200)
 
-  const body = { ...req.body, ...req.query }
-  console.log('📥 Webhook получен:', JSON.stringify(body).slice(0, 200))
+  const raw = { ...req.body, ...req.query }
+  console.log('📥 Webhook получен:', JSON.stringify(raw).slice(0, 300))
 
-  // Формат 1 — стандартный ClickUp API webhook (event + task_id)
-  if (body.event === 'taskCommentPosted') {
-    checkForEdits(body.task_id).catch(console.error)
+  // ClickUp отправляет данные внутри поля payload
+  const payload = raw.payload ?? raw
+  const taskId = payload.id || payload.task_id || raw.task_id || raw.id
+
+  console.log('🔍 Task ID:', taskId)
+
+  if (!taskId) {
+    console.log('⚠️ Webhook без task_id — пропускаем')
     return
   }
 
-  if (body.event === 'taskCreated' || body.event === 'taskTagUpdated' || body.event === 'taskUpdated') {
-    const taskId = body.task_id || body.id
-    if (taskId) processBriefTask(taskId).catch(console.error)
-    return
-  }
-
-  // Формат 2 — ClickUp Automation webhook (отправляет task_id напрямую)
-  const taskId = body.task_id || body.id || body.taskId
-  if (taskId) {
-    console.log('📥 Automation webhook, task_id:', taskId)
-    // Проверяем комментарии и тег brief
-    checkForEdits(taskId).catch(console.error)
-    processBriefTask(taskId).catch(console.error)
-  }
+  // Проверяем комментарии (правки) и тег brief
+  checkForEdits(taskId).catch(console.error)
+  processBriefTask(taskId).catch(console.error)
 })
 
 // Обработка задачи с тегом brief
