@@ -190,15 +190,28 @@ app.post('/webhook', async (req, res) => {
   const payload = raw.payload ?? raw
   const taskId = payload.id || payload.task_id || raw.task_id || raw.id
 
-  console.log('🔍 Task ID:', taskId)
+  console.log('🔍 Product Agent Task ID:', taskId)
 
   if (!taskId) {
     console.log('⚠️ Webhook без task_id — пропускаем')
     return
   }
 
-  // Проверяем комментарии (правки) и тег brief
+  // Игнорируем если комментарий содержит "approved" — это триггер для BA Agent
+  const commentText = payload.comment?.comment_text?.toLowerCase() ?? ''
+  if (
+    commentText.includes('approved') ||
+    commentText.includes('апрув') ||
+    commentText === '✅'
+  ) {
+    console.log('⏭️ Комментарий "approved" — передаём BA Agent, Product Agent не реагирует')
+    return
+  }
+
+  // Только правки паспорта
   checkForEdits(taskId).catch(console.error)
+
+  // Только если задача с тегом "brief"
   processBriefTask(taskId).catch(console.error)
 })
 
