@@ -13,6 +13,8 @@ const LIST_ID = process.env.CLICKUP_LIST_ID
 const PM_AGENT_URL = process.env.PM_AGENT_URL || 'https://pm-ai-agent-production.up.railway.app'
 const PORT = process.env.PORT || process.env.BA_AGENT_PORT || 3002
 
+const processingTasks = new Set()
+
 const QUESTIONS_PROMPT = `Ты Business Analyst Agent продукта SafeButton — мобильного приложения тревожной кнопки.
 На основе паспорта фичи задай уточняющие вопросы для написания детального PRD.
 Максимум 5 вопросов — только те которые реально влияют на реализацию.
@@ -91,19 +93,42 @@ ${prd.out_of_scope?.map(o => `• ${o}`).join('\n') ?? '—'}`
 }
 
 async function processTask(taskId) {
-  const task = await getTask(taskId)
-  const comments = await getComments(taskId)
+  // Защита от параллельной обработки
+  if (processingTasks.has(taskId)) {
+    console.log(`⏳ Задача уже обрабатывается: ${taskId}`)
+    return
+  }
+  processingTasks.add(taskId)
 
-  // Только задачи с паспортом
-  if (!task.description?.includes('ПАСПОРТ ФИЧИ')) return
+  try {
+    await _processTask(taskId)
+  } finally {
+    // Снимаем блокировку через 30 секунд
+    setTimeout(() => processingTasks.delete(taskId), 30000)
+  }
+}
+
+async function _processTask(taskId) {
+  const task = await getTask(taskId)
+  console.log(`\n🔍 Проверяем задачу: ${task.name}`)
+
+  const comments = await getComments(taskId)
 
   // ── КЛЮЧЕВОЕ ИЗМЕНЕНИЕ ──
   // BA-агент начинает работу ТОЛЬКО после "approved"
-  const approved = comments.find(c =>
-    c.comment_text?.toLowerCase().includes('approved') ||
-    c.comment_text?.toLowerCase().includes('апрув') ||
-    c.comment_text?.toLowerCase() === '✅'
-  )
+  // Апрув — только если комментарий ТОЛЬКО содержит слово approved
+  // (не как часть длинного текста от агента)
+  const approved = comments.find(c => {
+    const text = c.comment_text?.toLowerCase().trim() ?? ''
+    return (
+      text === 'approved' ||
+      text === 'апрув' ||
+      text === '✅' ||
+      text === 'апрувнуто' ||
+      text === 'ок' ||
+      text === 'ok'
+    )
+  })
   if (!approved) {
     console.log(`⏳ Нет апрува для: ${task.name} — ждём`)
     return
@@ -180,13 +205,35 @@ app.post('/process', async (req, res) => {
 
 app.post('/webhook', async (req, res) => {
   res.sendStatus(200)
-  const { event, comment, task_id } = req.body
-  if (event === 'taskCommentPosted') {
-    const text = comment?.comment_text?.toLowerCase() ?? ''
-    if (text.includes('approved') || text.includes('апрув') || text === '✅') {
-      processTask(task_id).catch(console.error)
-    }
+
+  const raw = { ...req.body, ...req.query }
+  console.log('📥 BA Webhook получен:', JSON.stringify(raw).slice(0, 300))
+
+  // ClickUp отправляет данные внутри поля payload
+  const payload = raw.payload ?? raw
+  const taskId = payload.id || payload.task_id || raw.task_id || raw.id
+  const commentText = payload.comment?.comment_text ?? ''
+
+  console.log('🔍 BA Task ID:', taskId)
+
+  if (!taskId) {
+    console.log('⚠️ Webhook без task_id — пропускаем')
+    return
   }
+
+  // Игнорируем комментарии от самих агентов
+  if (
+    commentText.includes('BA-агент') ||
+    commentText.includes('Product Agent') ||
+    commentText.includes('PM-агент') ||
+    commentText.includes('Паспорт оновлено') ||
+    commentText.includes('Паспорт фічі створено')
+  ) {
+    console.log('⏭️ Комментарий от агента — пропускаем')
+    return
+  }
+
+  processTask(taskId).catch(console.error)
 })
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
