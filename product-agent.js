@@ -115,7 +115,7 @@ ${p.out_of_scope?.map(o => `• ${o}`).join('\n') ?? '—'}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ЯК АПРУВИТИ
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-✅ "approved" → BA-агент починає роботу
+✅ Напишіть команду куратору → BA-агент починає роботу
 ✏️ "правки: [що змінити]" → паспорт буде оновлено`
 }
 
@@ -147,7 +147,7 @@ async function checkForEdits(taskId) {
   try {
     const updated = await callClaude(EDIT_PROMPT, `Поточний паспорт:\n${task.description}\n\nПравки:\n${editComment.comment_text}`)
     await updateDesc(taskId, buildDesc(updated))
-    await addComment(taskId, `✅ Паспорт оновлено!\n\nВнесено: ${editComment.comment_text}\n\n──────────\nПеревірте і напишіть "approved" коли готово.`)
+    await addComment(taskId, `✅ Паспорт оновлено!\n\nВнесено: ${editComment.comment_text}\n\n──────────\nПеревірте паспорт. Для правок напишіть: "правки: [що змінити]"`)
     console.log(`✅ Паспорт обновлён: ${task.name}`)
   } catch (e) {
     console.error('❌ Ошибка:', e.message)
@@ -190,7 +190,7 @@ app.post('/passport', async (req, res) => {
     const passport = await callClaude(CREATE_PROMPT, brief)
     const desc = buildDesc(passport)
     const task = await createTask(`[PASSPORT] ${passport.feature_name}`, desc)
-    await addComment(task.id, `🤖 Product Agent створив паспорт фічі.\n\nПріоритет: ${passport.business_value?.priority ?? '—'}/10 | AARRR: ${passport.business_value?.aarrr_stage ?? '—'} | Складність: ${passport.tech_assessment?.complexity ?? '—'}\n\n──────────\n✅ Напишіть "approved" → BA-агент починає роботу\n✏️ Напишіть "правки: [що змінити]" → внесу зміни`)
+    await addComment(task.id, `🤖 Product Agent створив паспорт фічі.\n\nПріоритет: ${passport.business_value?.priority ?? '—'}/10 | AARRR: ${passport.business_value?.aarrr_stage ?? '—'} | Складність: ${passport.tech_assessment?.complexity ?? '—'}\n\n──────────\n✏️ Напишіть "правки: [що змінити]" → внесу зміни`)
     console.log(`✅ Паспорт создан: ${task.url}`)
   } catch (e) { console.error('❌:', e.message) }
 })
@@ -263,7 +263,8 @@ async function processBriefTask(taskId) {
     const passportTask = await createTask(`[PASSPORT] ${passport.feature_name}`, desc)
 
     await addComment(taskId,
-      `✅ Паспорт фичи создан!\n\nЗадача: ${passportTask.url}\n\n──────────\nОткройте задачу, проверьте паспорт и напишите "approved" чтобы BA-агент начал проработку PRD.`
+      `✅ Паспорт фичи создан!\n\nЗадача: ${passportTask.url}\n\n──────────\nВідкрийте задачу та перевірте паспорт.
+✏️ Для правок напишіть: "правки: [що змінити]"`
     )
     console.log(`✅ Паспорт создан из брифа: ${passportTask.url}`)
 
@@ -280,6 +281,6 @@ app.listen(PORT, () => {
   console.log('📋 Product Agent — SafeButton')
   console.log(`📡 Порт: ${PORT}`)
   console.log('✏️ Правки: "правки: [текст]" в комментарии')
-  console.log('✅ Апрув: "approved" в комментарии')
+  console.log('✏️ Правки: "правки: [текст]" в комментарии')
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 })
