@@ -157,8 +157,23 @@ async function checkForEdits(taskId) {
 
 async function poll() {
   try {
-    const r = await clickup.get(`/list/${LIST_ID}/task`, { params: { tags: ['passport'], include_closed: false, page: 0 } })
-    for (const task of r.data.tasks ?? []) { await checkForEdits(task.id); await sleep(500) }
+    // Проверяем задачи с тегом "passport" на правки
+    const passportRes = await clickup.get(`/list/${LIST_ID}/task`, {
+      params: { tags: ['passport'], include_closed: false, page: 0 }
+    })
+    for (const task of passportRes.data.tasks ?? []) {
+      await checkForEdits(task.id)
+      await sleep(500)
+    }
+
+    // Проверяем задачи с тегом "brief" — создаём паспорт
+    const briefRes = await clickup.get(`/list/${LIST_ID}/task`, {
+      params: { tags: ['brief'], include_closed: false, page: 0 }
+    })
+    for (const task of briefRes.data.tasks ?? []) {
+      await processBriefTask(task.id)
+      await sleep(500)
+    }
   } catch (e) { console.error('Poll error:', e.message) }
 }
 
